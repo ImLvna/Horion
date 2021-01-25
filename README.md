@@ -3,6 +3,9 @@
 </p>
 <br/>
 
+**This repository is not a minecraft cheat. I am removing all of the unfair mods to make a pvp client -Luna**
+
+
 **Horion** is a minecraft bedrock edition utility mod designed to enhance a users gameplay. We do not take responsibility.
 If you want to contribute to this project, feel free to fork this repository and submit a pull request.
 **As of 09/01/20, this project is under no active development by the horion team anymore. We will still review PRs.**
