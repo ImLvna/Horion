@@ -957,21 +957,7 @@ void Hooks::Actor_lerpMotion(C_Entity* _this, vec3_t motVec) {
 	if (g_Data.getLocalPlayer() != _this)
 		return oLerp(_this, motVec);
 
-	static auto noKnockbackmod = moduleMgr->getModule<Velocity>();
-	if (noKnockbackmod->isEnabled()) {
-		static void* networkSender = nullptr;
-
-		if (!networkSender) {
-			if (g_Data.getVersion() == GAMEVERSION::g_1_16_0)
-				networkSender = reinterpret_cast<void*>(6 + FindSignature("FF 90 ?? ?? ?? ?? 4C 8D 9C 24 ?? ?? ?? ?? 49 8B 5B 18 49 8B 73 28 49 8B E3 5F C3"));
-			else
-				networkSender = reinterpret_cast<void*>(3 + FindSignature("FF 50 ? 41 80 BE ? ? ? ? ? 0F 85 ? ? ? ? EB 76"));
-		}
-		
-		if (networkSender == _ReturnAddress()) {
-			motVec = _this->velocity.lerp(motVec, noKnockbackmod->xModifier, noKnockbackmod->yModifier, noKnockbackmod->xModifier);
-		}
-	}
+	
 	
 	oLerp(_this, motVec);
 }
@@ -1103,54 +1089,12 @@ void Hooks::PleaseAutoComplete(__int64 a1, __int64 a2, TextHolder* text, int a4)
 void Hooks::LoopbackPacketSender_sendToServer(C_LoopbackPacketSender* a, C_Packet* packet) {
 	static auto oFunc = g_Hooks.LoopbackPacketSender_sendToServerHook->GetFastcall<void, C_LoopbackPacketSender*, C_Packet*>();
 
-	static auto autoSneakMod = moduleMgr->getModule<AutoSneak>();
-	static auto freecamMod = moduleMgr->getModule<Freecam>();
-	static auto blinkMod = moduleMgr->getModule<Blink>();
 	static auto noPacketMod = moduleMgr->getModule<NoPacket>();
 
 	if (noPacketMod->isEnabled() && g_Data.isInGame())
 		return;
 
-	if (freecamMod->isEnabled() || blinkMod->isEnabled()) {
-		if (packet->isInstanceOf<C_MovePlayerPacket>() || packet->isInstanceOf<PlayerAuthInputPacket>()) {
-			if (blinkMod->isEnabled()) {
-				if (packet->isInstanceOf<C_MovePlayerPacket>()) {
-					C_MovePlayerPacket* meme = reinterpret_cast<C_MovePlayerPacket*>(packet);
-					meme->onGround = true;                                                            //Don't take Fall Damages when turned off
-					blinkMod->getMovePlayerPacketHolder()->push_back(new C_MovePlayerPacket(*meme));  // Saving the packets
-				} else {
-					blinkMod->getPlayerAuthInputPacketHolder()->push_back(new PlayerAuthInputPacket(*reinterpret_cast<PlayerAuthInputPacket*>(packet)));
-				}
-			}
-			return;  // Dont call LoopbackPacketSender_sendToServer
-		}
-	} else if (!blinkMod->isEnabled()) {
-		if (blinkMod->getMovePlayerPacketHolder()->size() > 0) {
-			for (auto it : *blinkMod->getMovePlayerPacketHolder()) {
-				oFunc(a, (it));
-				delete it;
-				it = nullptr;
-			}
-			blinkMod->getMovePlayerPacketHolder()->clear();
-			return;
-		}
-		if (blinkMod->getPlayerAuthInputPacketHolder()->size() > 0) {
-			for (auto it : *blinkMod->getPlayerAuthInputPacketHolder()) {
-				oFunc(a, (it));
-				delete it;
-				it = nullptr;
-			}
-			blinkMod->getPlayerAuthInputPacketHolder()->clear();
-			return;
-		}
-	}
-
-	if (autoSneakMod->isEnabled() && g_Data.getLocalPlayer() != nullptr && autoSneakMod->doSilent && packet->isInstanceOf<C_PlayerActionPacket>()) {
-		auto* pp = reinterpret_cast<C_PlayerActionPacket*>(packet);
-		
-		if (pp->action == 12 && pp->entityRuntimeId == g_Data.getLocalPlayer()->entityRuntimeId) 
-			return; //dont send uncrouch
-	}
+	
 	
 	moduleMgr->onSendPacket(packet);
 
@@ -1199,44 +1143,8 @@ void Hooks::MultiLevelPlayer_tick(C_EntityList* _this) {
 void Hooks::GameMode_startDestroyBlock(C_GameMode* _this, vec3_ti* a2, uint8_t face, void* a4, void* a5) {
 	static auto oFunc = g_Hooks.GameMode_startDestroyBlockHook->GetFastcall<void, C_GameMode*, vec3_ti*, uint8_t, void*, void*>();
 
-	static auto nukerModule = moduleMgr->getModule<Nuker>();
-	static auto instaBreakModule = moduleMgr->getModule<InstaBreak>();
 
-	if (nukerModule->isEnabled()) {
-		vec3_ti tempPos;
-
-		int range = nukerModule->getNukerRadius();
-		const bool isVeinMiner = nukerModule->isVeinMiner();
-		const bool isAutoMode = nukerModule->isAutoMode();
-
-		C_BlockSource* region = g_Data.getLocalPlayer()->region;
-		int selectedBlockId = ((region->getBlock(*a2)->blockLegacy))->blockId;
-		uint8_t selectedBlockData = region->getBlock(*a2)->data;
-
-		if (!isAutoMode) {
-			for (int x = -range; x < range; x++) {
-				for (int y = -range; y < range; y++) {
-					for (int z = -range; z < range; z++) {
-						tempPos.x = a2->x + x;
-						tempPos.y = a2->y + y;
-						tempPos.z = a2->z + z;
-						if (tempPos.y > 0) {
-							C_Block* blok = region->getBlock(tempPos);
-							uint8_t data = blok->data;
-							int id = ((blok->blockLegacy))->blockId;
-							if (id != 0 && (!isVeinMiner || (id == selectedBlockId && data == selectedBlockData)))
-								_this->destroyBlock(&tempPos, face);
-						}
-					}
-				}
-			}
-		}
-		return;
-	}
-	if (instaBreakModule->isEnabled()) {
-		_this->destroyBlock(a2, face);
-		return;
-	}
+	
 
 	oFunc(_this, a2, face, a4, a5);
 }
@@ -1252,28 +1160,14 @@ void Hooks::HIDController_keyMouse(C_HIDController* _this, void* a2, void* a3) {
 int Hooks::BlockLegacy_getRenderLayer(C_BlockLegacy* a1) {
 	static auto oFunc = g_Hooks.BlockLegacy_getRenderLayerHook->GetFastcall<int, C_BlockLegacy*>();
 
-	static auto xrayMod = moduleMgr->getModule<Xray>();
-	if (xrayMod->isEnabled()) {
-		char* text = a1->name.getText();
-		if (strstr(text, "ore") == NULL)
-			if (strcmp(text, "lava") != NULL)
-				if (strcmp(text, "water") != NULL)
-					if (strcmp(text, "portal") != NULL)
-						if (strcmp(text, "ancient_debris") != NULL)
-							if (strcmp(text, "command_block") != NULL)
-								return 10;
-	}
+	
 	return oFunc(a1);
 }
 
 __int8* Hooks::BlockLegacy_getLightEmission(C_BlockLegacy* a1, __int8* a2) {
 	static auto oFunc = g_Hooks.BlockLegacy_getLightEmissionHook->GetFastcall<__int8*, C_BlockLegacy*, __int8*>();
 
-	static auto xrayMod = moduleMgr->getModule<Xray>();
-	if (xrayMod->isEnabled()) {
-		*a2 = 15;
-		return a2;
-	}
+	
 	return oFunc(a1, a2);
 }
 
@@ -1288,19 +1182,9 @@ __int64 Hooks::LevelRenderer_renderLevel(__int64 _this, __int64 a2, __int64 a3) 
 		reloadChunk = reinterpret_cast<reloadShit_t>(FindSignature("48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 44 24 ?? 48 8B F9 48 8D A9"));
 	}
 
-	static auto xrayMod = moduleMgr->getModule<Xray>();
 
 	static bool lastState = false;
-	if (lastState != xrayMod->isEnabled()) {
-		// LevelRenderer::rebuildAllRenderChunkGeometry
-		lastState = xrayMod->isEnabled();
-		unsigned long long* v5;  // rdi
-		unsigned long long* i;   // rbx
-
-		v5 = *(unsigned long long**)(_this + 32);
-		for (i = (unsigned long long*)*v5; i != v5; i = (unsigned long long*)*i)
-			reloadChunk(i[3]);
-	}
+	
 
 	auto ret = oFunc(_this, a2, a3);
 
@@ -1340,8 +1224,7 @@ __int64 Hooks::MoveInputHandler_tick(C_MoveInputHandler* a1, C_Entity* a2) {
 __int64 Hooks::ChestScreenController_tick(C_ChestScreenController* a1) {
 	static auto oFunc = g_Hooks.ChestScreenController_tickHook->GetFastcall<__int64, C_ChestScreenController*>();
 
-	static auto chestStealerMod = moduleMgr->getModule<ChestStealer>();
-	if(chestStealerMod->isEnabled()) chestStealerMod->chestScreenController_tick(a1);
+	
 
 	return oFunc(a1);
 }
@@ -1402,20 +1285,14 @@ bool Hooks::Actor_isInWater(C_Entity* _this) {
 	if (g_Data.getLocalPlayer() != _this)
 		return oFunc(_this);
 
-	static auto airSwimModule = moduleMgr->getModule<AirSwim>();
-	if (airSwimModule->isEnabled())
-		return true;
+	
 
 	return oFunc(_this);
 }
 
 void Hooks::JumpPower(C_Entity* a1, float a2) {
 	static auto oFunc = g_Hooks.JumpPowerHook->GetFastcall<void, C_Entity*, float>();
-	static auto highJumpMod = moduleMgr->getModule<HighJump>();
-	if (highJumpMod->isEnabled() && g_Data.getLocalPlayer() == a1) {
-		a1->velocity.y = highJumpMod->jumpPower;
-		return;
-	}
+	
 	oFunc(a1, a2);
 }
 
@@ -1428,20 +1305,14 @@ __int64 Hooks::MinecraftGame_onAppSuspended(__int64 _this) {
 void Hooks::Actor_ascendLadder(C_Entity* _this) {
 	static auto oFunc = g_Hooks.Actor_ascendLadderHook->GetFastcall<void, C_Entity*>();
 
-	static auto fastLadderModule = moduleMgr->getModule<FastLadder>();
-	if (fastLadderModule->isEnabled() && g_Data.getLocalPlayer() == _this) {
-		_this->velocity.y = 0.6f;
-		return;
-	}
+	
 	return oFunc(_this);
 }
 
 void Hooks::Actor_startSwimming(C_Entity* _this) {
 	static auto oFunc = g_Hooks.Actor_startSwimmingHook->GetFastcall<void, C_Entity*>();
 
-	static auto jesusModule = moduleMgr->getModule<Jesus>();
-	if (jesusModule->isEnabled() && g_Data.getLocalPlayer() == _this)
-		return;
+	
 
 	oFunc(_this);
 }
@@ -1455,15 +1326,7 @@ void Hooks::RakNetInstance_tick(C_RakNetInstance* _this, __int64 a2, __int64 a3)
 float Hooks::GameMode_getPickRange(C_GameMode* _this, __int64 a2, char a3) {
 	static auto oFunc = g_Hooks.GameMode_getPickRangeHook->GetFastcall<float, C_GameMode*, __int64, char>();
 
-	if (g_Data.getLocalPlayer() != nullptr) {
-		static auto extendedBlockReachModule = moduleMgr->getModule<ExtendedBlockReach>();
-		if (extendedBlockReachModule->isEnabled())
-			return extendedBlockReachModule->getBlockReach();
-
-		static auto teleportModule = moduleMgr->getModule<Teleport>();
-		if (teleportModule->isEnabled())
-			return 255;
-	}
+	
 
 	return oFunc(_this, a2, a3);
 }
@@ -2021,7 +1884,6 @@ __int64 Hooks::GameMode_attack(C_GameMode* _this, C_Entity* ent) {
 void Hooks::LocalPlayer__updateFromCamera(__int64 a1, C_Camera* camera) {
 	auto func = g_Hooks.LocalPlayer__updateFromCameraHook->GetFastcall<__int64, __int64, C_Camera*>();
 	auto freelookMod = moduleMgr->getModule<Freelook>();
-	auto noHurtcamMod = moduleMgr->getModule<NoHurtcam>();
 
 	if (freelookMod->redirectMouse) {
 		freelookMod->cameraFacesFront = camera->facesPlayerFront;
@@ -2034,26 +1896,14 @@ void Hooks::LocalPlayer__updateFromCamera(__int64 a1, C_Camera* camera) {
 
 		return;
 	}
-	if (noHurtcamMod->isEnabled() && g_Data.isInGame() && g_Data.getLocalPlayer()->isAlive()) {
-		vec2_t rot;
-		camera->getPlayerRotation(&rot);
-		if (camera->facesPlayerFront) {
-			rot.x *= -1;  // rotate back
-			rot.y += 180;
-			rot = rot.normAngles();
-		}
-
-		camera->setOrientationDeg(rot.x, rot.y, 0);
-	}
+	
 
 	func(a1, camera);
 }
 bool Hooks::Mob__isImmobile(C_Entity* ent) {
 	auto func = g_Hooks.Mob__isImmobileHook->GetFastcall<bool, C_Entity*>();
 
-	static auto antiImmobileMod = moduleMgr->getModule<AntiImmobile>();
-	if (antiImmobileMod->isEnabled() && ent == g_Data.getLocalPlayer())
-		return false;
+	
 
 	return func(ent);
 }
@@ -2084,18 +1934,8 @@ void Hooks::InventoryTransactionManager__addAction(C_InventoryTransactionManager
 
 void Hooks::LevelRendererPlayer__renderNameTags(__int64 a1, __int64 a2, TextHolder* a3, __int64 a4) {
 	static auto func = g_Hooks.LevelRendererPlayer__renderNameTagsHook->GetFastcall<void, __int64, __int64, TextHolder*, __int64>();
-	static auto nameTagsMod = moduleMgr->getModule<NameTags>();
 
-	if (nameTagsMod->isEnabled() && nameTagsMod->nameTags.size() > 0) {
-		std::string text = Utils::sanitize(a3->getText());
-		std::size_t found = text.find('\n');
-
-		if (found != std::string::npos)
-			text = text.substr(0, found);
-
-		if (nameTagsMod->nameTags.find(text) != nameTagsMod->nameTags.end())
-			return;
-	}
+	
 
 	return func(a1, a2, a3, a4);
 }
